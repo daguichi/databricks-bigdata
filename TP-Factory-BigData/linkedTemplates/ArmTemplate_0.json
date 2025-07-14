@@ -225,6 +225,559 @@
 			]
 		},
 		{
+			"name": "[concat(parameters('factoryName'), '/Procesamiento')]",
+			"type": "Microsoft.DataFactory/factories/dataflows",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Se eliminan columnas innecesarias",
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"dataset": {
+								"referenceName": "usersTransactionsCsv",
+								"type": "DatasetReference"
+							},
+							"name": "transactions",
+							"description": "Importar datos de usersTransactionsCsv. Los dias se importan como yyyy-MM-dd sin tener en cuenta el horario."
+						},
+						{
+							"dataset": {
+								"referenceName": "onboardingCsv",
+								"type": "DatasetReference"
+							},
+							"name": "onboarding"
+						},
+						{
+							"dataset": {
+								"referenceName": "usersCsv",
+								"type": "DatasetReference"
+							},
+							"name": "users"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureBlobStorage1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "onboardingPreProcessed"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureBlobStorage1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "usersPreProcessed"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureBlobStorage1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "transactionsPreProcessed"
+						}
+					],
+					"transformations": [
+						{
+							"name": "DeleteUnconsistentRows",
+							"description": "Se eliminan, si los hay, los \"cobros\" de individuals"
+						},
+						{
+							"name": "DeleteOnboardingUnconsistentRows"
+						},
+						{
+							"name": "cleanUsers"
+						},
+						{
+							"name": "DeleteUnnecessaryColsTransactions"
+						},
+						{
+							"name": "DeleteUnnecessaryColsOnboarding"
+						},
+						{
+							"name": "DeleteUnnecessaryColsUsers"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "DeleteRepeatedUsers"
+						},
+						{
+							"name": "deleteIdCol"
+						},
+						{
+							"name": "filterSellers"
+						},
+						{
+							"name": "filterIndividuals"
+						},
+						{
+							"name": "countTransactionsIndividuals"
+						},
+						{
+							"name": "countTransactionsSellers"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          Prop_0 as string,",
+						"          user_id as string,",
+						"          transaction_dt as date 'yyyy-MM-dd',",
+						"          type as integer,",
+						"          segment as integer",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false) ~> transactions",
+						"source(output(",
+						"          Prop_0 as string,",
+						"          {Unnamed: 0} as string,",
+						"          first_login_dt as date 'yyyy-MM-dd',",
+						"          week_year as string,",
+						"          user_id as string,",
+						"          habito as integer,",
+						"          habito_dt as date 'yyyy-MM-dd',",
+						"          activacion as integer,",
+						"          activacion_dt as date 'yyyy-MM-dd',",
+						"          setup as integer,",
+						"          setup_dt as date 'yyyy-MM-dd',",
+						"          return as integer,",
+						"          return_dt as date 'yyyy-MM-dd'",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false) ~> onboarding",
+						"source(output(",
+						"          Prop_0 as string,",
+						"          user_id as string,",
+						"          name as string,",
+						"          email as string,",
+						"          address as string,",
+						"          birth_dt as string,",
+						"          phone as string,",
+						"          type as string,",
+						"          rubro as string",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false) ~> users",
+						"transactions filter(((type<=7 && segment==1) || segment == 2 ) && startsWith(user_id, 'MLB')) ~> DeleteUnconsistentRows",
+						"onboarding filter(!isNull(user_id) ",
+						"&& !isNull(first_login_dt) ",
+						"&& startsWith(user_id, 'MLB')",
+						"&& habito <= activacion ",
+						"&& activacion <= setup ",
+						"&& iif(habito == 1, !isNull(habito_dt), isNull(habito_dt))",
+						"&& iif(activacion == 1, !isNull(activacion_dt), isNull(activacion_dt))",
+						"&& iif(setup == 1, !isNull(setup_dt), isNull(setup_dt))",
+						"&& iif(return == 1, !isNull(return_dt), isNull(return_dt))",
+						"&& ((habito == 1 && activacion == 1 && habito_dt >= activacion_dt) || (habito == 0 && activacion == 0))",
+						"&& ((activacion == 1 && setup == 1 && activacion_dt >= setup_dt) || (activacion == 0 && setup == 0))",
+						"&& ((habito == 1 && habito_dt >= first_login_dt) || habito == 0)",
+						"&& ((activacion == 1 && activacion_dt >= first_login_dt) || activacion == 0)",
+						"&& ((setup == 1 && setup_dt >= first_login_dt) || setup == 0)",
+						"&& ((return == 1 && return_dt >= first_login_dt) || return == 0)) ~> DeleteOnboardingUnconsistentRows",
+						"users filter(!isNull(user_id) && startsWith(user_id, \"MLB\")) ~> cleanUsers",
+						"DeleteUnconsistentRows select(mapColumn(",
+						"          user_id,",
+						"          transaction_dt,",
+						"          type,",
+						"          segment",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsTransactions",
+						"DeleteOnboardingUnconsistentRows select(mapColumn(",
+						"          first_login_dt,",
+						"          user_id,",
+						"          habito,",
+						"          habito_dt,",
+						"          activacion,",
+						"          activacion_dt,",
+						"          setup,",
+						"          setup_dt,",
+						"          return,",
+						"          return_dt",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsOnboarding",
+						"cleanUsers select(mapColumn(",
+						"          id = user_id",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsUsers",
+						"DeleteUnnecessaryColsOnboarding, DeleteUnnecessaryColsUsers lookup(user_id == id,",
+						"     multiple: true,",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 filter(isNull(id)) ~> DeleteRepeatedUsers",
+						"DeleteRepeatedUsers select(mapColumn(",
+						"          first_login_dt,",
+						"          user_id,",
+						"          habito,",
+						"          habito_dt,",
+						"          activacion,",
+						"          activacion_dt,",
+						"          setup,",
+						"          setup_dt,",
+						"          return,",
+						"          return_dt",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> deleteIdCol",
+						"DeleteUnnecessaryColsTransactions filter(segment==2) ~> filterSellers",
+						"DeleteUnnecessaryColsTransactions filter(segment==1) ~> filterIndividuals",
+						"filterIndividuals aggregate(groupBy(user_id),",
+						"     transaction_dt = countDistinct(transaction_dt)) ~> countTransactionsIndividuals",
+						"filterSellers aggregate(groupBy(user_id),",
+						"     transaction_dt = count(transaction_dt)) ~> countTransactionsSellers",
+						"DeleteOnboardingUnconsistentRows sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     container: 'tp-big-data-files',",
+						"     folderPath: 'pre-process-files',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     filePattern:'onboarding_pre_processed_[n].csv',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          first_login_dt,",
+						"          user_id,",
+						"          habito,",
+						"          habito_dt,",
+						"          activacion,",
+						"          activacion_dt,",
+						"          setup,",
+						"          setup_dt,",
+						"          return,",
+						"          return_dt",
+						"     )) ~> onboardingPreProcessed",
+						"cleanUsers sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     container: 'tp-big-data-files',",
+						"     folderPath: 'pre-process-files',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     filePattern:'users_pre_processed_[n].csv',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          user_id",
+						"     )) ~> usersPreProcessed",
+						"DeleteUnconsistentRows sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     container: 'tp-big-data-files',",
+						"     folderPath: 'pre-process-files',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     filePattern:'transactions_pre_processed_[n].csv',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          user_id,",
+						"          transaction_dt,",
+						"          type,",
+						"          segment",
+						"     )) ~> transactionsPreProcessed"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/usersTransactionsCsv')]",
+				"[concat(variables('factoryId'), '/datasets/onboardingCsv')]",
+				"[concat(variables('factoryId'), '/datasets/usersCsv')]",
+				"[concat(variables('factoryId'), '/linkedServices/AzureBlobStorage1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/Pipeline')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "PreProcesamiento",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "Procesamiento",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"transactions": {},
+									"onboarding": {},
+									"users": {},
+									"onboardingPreProcessed": {},
+									"usersPreProcessed": {},
+									"transactionsPreProcessed": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"annotations": [],
+				"lastPublishTime": "2024-11-29T21:47:31Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/dataflows/Procesamiento')]"
+			]
+		}
+	]
+}{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Nombre de instancia de Data Factory",
+			"defaultValue": "TP-Factory-BigData"
+		},
+		"AzureBlobStorage1_connectionString": {
+			"type": "secureString",
+			"metadata": "Cadena protegida para \"connectionString\"de \"AzureBlobStorage1\""
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/AzureBlobStorage1')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobStorage",
+				"typeProperties": {
+					"connectionString": "[parameters('AzureBlobStorage1_connectionString')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/onboardingCsv')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "AzureBlobStorage1",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobStorageLocation",
+						"fileName": "lk_onboarding.csv",
+						"container": "tp-big-data-files"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": [
+					{
+						"name": "Prop_0",
+						"type": "String"
+					},
+					{
+						"name": "Unnamed: 0",
+						"type": "String"
+					},
+					{
+						"name": "first_login_dt",
+						"type": "String"
+					},
+					{
+						"name": "week_year",
+						"type": "String"
+					},
+					{
+						"name": "user_id",
+						"type": "String"
+					},
+					{
+						"name": "habito",
+						"type": "String"
+					},
+					{
+						"name": "habito_dt",
+						"type": "String"
+					},
+					{
+						"name": "activacion",
+						"type": "String"
+					},
+					{
+						"name": "activacion_dt",
+						"type": "String"
+					},
+					{
+						"name": "setup",
+						"type": "String"
+					},
+					{
+						"name": "setup_dt",
+						"type": "String"
+					},
+					{
+						"name": "return",
+						"type": "String"
+					},
+					{
+						"name": "return_dt",
+						"type": "String"
+					}
+				]
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/AzureBlobStorage1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/usersCsv')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "AzureBlobStorage1",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobStorageLocation",
+						"fileName": "lk_users.csv",
+						"container": "tp-big-data-files"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": [
+					{
+						"name": "Prop_0",
+						"type": "String"
+					},
+					{
+						"name": "user_id",
+						"type": "String"
+					},
+					{
+						"name": "name",
+						"type": "String"
+					},
+					{
+						"name": "email",
+						"type": "String"
+					},
+					{
+						"name": "address",
+						"type": "String"
+					},
+					{
+						"name": "birth_dt",
+						"type": "String"
+					},
+					{
+						"name": "phone",
+						"type": "String"
+					},
+					{
+						"name": "type",
+						"type": "String"
+					},
+					{
+						"name": "rubro",
+						"type": "String"
+					}
+				]
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/AzureBlobStorage1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/usersTransactionsCsv')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "AzureBlobStorage1",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobStorageLocation",
+						"fileName": "bt_users_transactions.csv",
+						"container": "tp-big-data-files"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": [
+					{
+						"name": "Prop_0",
+						"type": "String"
+					},
+					{
+						"name": "user_id",
+						"type": "String"
+					},
+					{
+						"name": "transaction_dt",
+						"type": "String"
+					},
+					{
+						"name": "type",
+						"type": "String"
+					},
+					{
+						"name": "segment",
+						"type": "String"
+					}
+				]
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/AzureBlobStorage1')]"
+			]
+		},
+		{
 			"name": "[concat(parameters('factoryName'), '/PreProcesamiento')]",
 			"type": "Microsoft.DataFactory/factories/dataflows",
 			"apiVersion": "2018-06-01",

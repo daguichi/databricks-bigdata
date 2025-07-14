@@ -1,0 +1,9 @@
+{
+	"name": "TP-Factory-BigData",
+	"location": "brazilsouth",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "c75ca3bf-ac56-4906-8d07-6f0063daa4dd",
+		"tenantId": "a1f50a97-21c0-49a7-a9d4-f244ebb42da7"
+	}
+}

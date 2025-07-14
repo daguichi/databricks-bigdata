@@ -1,0 +1,427 @@
+{
+	"name": "Procesamiento",
+	"properties": {
+		"description": "Se eliminan columnas innecesarias",
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "usersTransactionsCsv",
+						"type": "DatasetReference"
+					},
+					"name": "transactions",
+					"description": "Importar datos de usersTransactionsCsv. Los dias se importan como yyyy-MM-dd sin tener en cuenta el horario."
+				},
+				{
+					"dataset": {
+						"referenceName": "onboardingCsv",
+						"type": "DatasetReference"
+					},
+					"name": "onboarding"
+				},
+				{
+					"dataset": {
+						"referenceName": "usersCsv",
+						"type": "DatasetReference"
+					},
+					"name": "users"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "onboardingPreProcessed"
+				},
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "usersPreProcessed"
+				},
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "transactionsPreProcessed"
+				},
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "usersTransformed"
+				},
+				{
+					"dataset": {
+						"referenceName": "dropRes",
+						"type": "DatasetReference"
+					},
+					"name": "dropResults"
+				},
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "setupResults"
+				},
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "habitoResults"
+				},
+				{
+					"linkedService": {
+						"referenceName": "AzureBlobStorage1",
+						"type": "LinkedServiceReference"
+					},
+					"name": "activacionResults"
+				}
+			],
+			"transformations": [
+				{
+					"name": "DeleteUnconsistentRows",
+					"description": "Se eliminan, si los hay, los \"cobros\" de individuals"
+				},
+				{
+					"name": "DeleteOnboardingUnconsistentRows"
+				},
+				{
+					"name": "cleanUsers"
+				},
+				{
+					"name": "DeleteUnnecessaryColsTransactions"
+				},
+				{
+					"name": "DeleteUnnecessaryColsOnboarding"
+				},
+				{
+					"name": "DeleteUnnecessaryColsUsers"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "DeleteRepeatedUsers"
+				},
+				{
+					"name": "deleteIdCol"
+				},
+				{
+					"name": "filterSellers"
+				},
+				{
+					"name": "filterIndividuals"
+				},
+				{
+					"name": "countTransactionsIndividuals"
+				},
+				{
+					"name": "countTransactionsSellers"
+				},
+				{
+					"name": "union1"
+				},
+				{
+					"name": "join1"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "activacion"
+				},
+				{
+					"name": "habito"
+				},
+				{
+					"name": "setup"
+				},
+				{
+					"name": "drop"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          {_c0} as short,",
+				"          user_id as string,",
+				"          transaction_dt as string,",
+				"          type as short,",
+				"          segment as short",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     partitionBy('hash', 1)) ~> transactions",
+				"source(output(",
+				"          Prop_0 as string,",
+				"          {Unnamed: 0} as string,",
+				"          first_login_dt as date 'yyyy-MM-dd',",
+				"          week_year as string,",
+				"          user_id as string,",
+				"          habito as integer,",
+				"          habito_dt as date 'yyyy-MM-dd',",
+				"          activacion as integer,",
+				"          activacion_dt as date 'yyyy-MM-dd',",
+				"          setup as integer,",
+				"          setup_dt as date 'yyyy-MM-dd',",
+				"          return as integer,",
+				"          return_dt as date 'yyyy-MM-dd'",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false) ~> onboarding",
+				"source(output(",
+				"          Prop_0 as string,",
+				"          user_id as string,",
+				"          name as string,",
+				"          email as string,",
+				"          address as string,",
+				"          birth_dt as string,",
+				"          phone as string,",
+				"          type as string,",
+				"          rubro as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false) ~> users",
+				"transactions filter(((type<=7 && segment==1) || segment == 2 ) && startsWith(user_id, 'MLB'),",
+				"     partitionBy('hash', 1)) ~> DeleteUnconsistentRows",
+				"onboarding filter(!isNull(user_id) ",
+				"&& !isNull(first_login_dt) ",
+				"&& startsWith(user_id, 'MLB')",
+				"&& habito <= activacion ",
+				"&& activacion <= setup ",
+				"&& iif(habito == 1, !isNull(habito_dt), isNull(habito_dt))",
+				"&& iif(activacion == 1, !isNull(activacion_dt), isNull(activacion_dt))",
+				"&& iif(setup == 1, !isNull(setup_dt), isNull(setup_dt))",
+				"&& iif(return == 1, !isNull(return_dt), isNull(return_dt))",
+				"&& ((habito == 1 && activacion == 1 && habito_dt >= activacion_dt) || (habito == 0 || activacion == 0))",
+				"&& ((activacion == 1 && setup == 1 && activacion_dt >= setup_dt) || (activacion == 0 || setup == 0))",
+				"&& ((habito == 1 && habito_dt >= first_login_dt) || habito == 0)",
+				"&& ((activacion == 1 && activacion_dt >= first_login_dt) || activacion == 0)",
+				"&& ((setup == 1 && setup_dt >= first_login_dt) || setup == 0)",
+				"&& ((return == 1 && return_dt >= first_login_dt) || return == 0)) ~> DeleteOnboardingUnconsistentRows",
+				"users filter(!isNull(user_id) && startsWith(user_id, \"MLB\")) ~> cleanUsers",
+				"DeleteUnconsistentRows select(mapColumn(",
+				"          user_id,",
+				"          transaction_dt,",
+				"          type,",
+				"          segment",
+				"     ),",
+				"     partitionBy('hash', 1),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsTransactions",
+				"DeleteOnboardingUnconsistentRows select(mapColumn(",
+				"          first_login_dt,",
+				"          user_id,",
+				"          habito,",
+				"          habito_dt,",
+				"          activacion,",
+				"          activacion_dt,",
+				"          setup,",
+				"          setup_dt,",
+				"          return,",
+				"          return_dt",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsOnboarding",
+				"cleanUsers select(mapColumn(",
+				"          id = user_id",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsUsers",
+				"DeleteUnnecessaryColsOnboarding, DeleteUnnecessaryColsUsers lookup(user_id == id,",
+				"     multiple: true,",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1 filter(isNull(id)) ~> DeleteRepeatedUsers",
+				"DeleteRepeatedUsers select(mapColumn(",
+				"          first_login_dt,",
+				"          user_id,",
+				"          habito,",
+				"          habito_dt,",
+				"          activacion,",
+				"          activacion_dt,",
+				"          setup,",
+				"          setup_dt,",
+				"          return,",
+				"          return_dt",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> deleteIdCol",
+				"DeleteUnnecessaryColsTransactions filter(segment==2) ~> filterSellers",
+				"DeleteUnnecessaryColsTransactions filter(segment==1,",
+				"     partitionBy('hash', 1)) ~> filterIndividuals",
+				"filterIndividuals aggregate(groupBy(user_id),",
+				"     transaction_dt = countDistinct(transaction_dt),",
+				"     partitionBy('hash', 1)) ~> countTransactionsIndividuals",
+				"filterSellers aggregate(groupBy(user_id),",
+				"     transaction_dt = count(transaction_dt)) ~> countTransactionsSellers",
+				"countTransactionsIndividuals, countTransactionsSellers union(byName: true,",
+				"     partitionBy('hash', 1))~> union1",
+				"union1, deleteIdCol join(union1@user_id == deleteIdCol@user_id,",
+				"     joinType:'right',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     partitionBy('hash', 1),",
+				"     broadcast: 'auto')~> join1",
+				"join1 filter(isNull(transaction_dt) || (transaction_dt >= 5 && habito == 1 && transaction_dt >= 1 && activacion == 1),",
+				"     partitionBy('hash', 1)) ~> filter1",
+				"filter1 aggregate(groupBy(activacion),",
+				"     user_id = count(union1@user_id)) ~> activacion",
+				"filter1 aggregate(groupBy(habito),",
+				"     user_id = count(union1@user_id)) ~> habito",
+				"filter1 aggregate(groupBy(setup),",
+				"     user_id = count(union1@user_id),",
+				"     partitionBy('hash', 1)) ~> setup",
+				"filter1 aggregate(groupBy(return),",
+				"     user_id = count(union1@user_id),",
+				"     partitionBy('hash', 1)) ~> drop",
+				"DeleteOnboardingUnconsistentRows sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'pre-process-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'onboarding_pre_processed_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          first_login_dt,",
+				"          user_id,",
+				"          habito,",
+				"          habito_dt,",
+				"          activacion,",
+				"          activacion_dt,",
+				"          setup,",
+				"          setup_dt,",
+				"          return,",
+				"          return_dt",
+				"     )) ~> onboardingPreProcessed",
+				"cleanUsers sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'pre-process-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'users_pre_processed_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          user_id",
+				"     )) ~> usersPreProcessed",
+				"DeleteUnconsistentRows sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'pre-process-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'transactions_pre_processed_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          user_id,",
+				"          transaction_dt,",
+				"          type,",
+				"          segment",
+				"     )) ~> transactionsPreProcessed",
+				"filter1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'transformed-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'data_transformed_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          transactions = transaction_dt,",
+				"          first_login_dt,",
+				"          user_id = deleteIdCol@user_id,",
+				"          habito,",
+				"          habito_dt,",
+				"          activacion,",
+				"          activacion_dt,",
+				"          setup,",
+				"          setup_dt,",
+				"          return,",
+				"          return_dt",
+				"     )) ~> usersTransformed",
+				"drop sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     partitionFileNames:['drop-res.csv'],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     partitionBy('hash', 1)) ~> dropResults",
+				"setup sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'transformed-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'setup_results_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          setup,",
+				"          sum = user_id",
+				"     )) ~> setupResults",
+				"habito sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'transformed-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'habito_results_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          habito,",
+				"          sum = user_id",
+				"     )) ~> habitoResults",
+				"activacion sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delimited',",
+				"     container: 'tp-big-data-files',",
+				"     folderPath: 'transformed-files',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     filePattern:'activacion_results_[n].csv',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     mapColumn(",
+				"          activacion,",
+				"          sum = user_id",
+				"     )) ~> activacionResults"
+			]
+		}
+	}
+}

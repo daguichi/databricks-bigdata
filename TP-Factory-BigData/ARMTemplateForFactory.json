@@ -36,16 +36,16 @@
 						"userProperties": [],
 						"typeProperties": {
 							"dataflow": {
-								"referenceName": "PreProcesamiento",
+								"referenceName": "Procesamiento",
 								"type": "DataFlowReference",
 								"parameters": {},
 								"datasetParameters": {
 									"transactions": {},
 									"onboarding": {},
 									"users": {},
-									"transactionsClean": {},
-									"onboardingClean": {},
-									"usersClean": {}
+									"onboardingPreProcessed": {},
+									"usersPreProcessed": {},
+									"transactionsPreProcessed": {}
 								}
 							},
 							"staging": {},
@@ -61,10 +61,10 @@
 					"elapsedTimeMetric": {}
 				},
 				"annotations": [],
-				"lastPublishTime": "2024-11-29T21:33:35Z"
+				"lastPublishTime": "2024-11-29T21:47:31Z"
 			},
 			"dependsOn": [
-				"[concat(variables('factoryId'), '/dataflows/PreProcesamiento')]"
+				"[concat(variables('factoryId'), '/dataflows/Procesamiento')]"
 			]
 		},
 		{
@@ -276,7 +276,7 @@
 			"dependsOn": []
 		},
 		{
-			"name": "[concat(parameters('factoryName'), '/PreProcesamiento')]",
+			"name": "[concat(parameters('factoryName'), '/Procesamiento')]",
 			"type": "Microsoft.DataFactory/factories/dataflows",
 			"apiVersion": "2018-06-01",
 			"properties": {
@@ -313,21 +313,21 @@
 								"referenceName": "AzureBlobStorage1",
 								"type": "LinkedServiceReference"
 							},
-							"name": "transactionsClean"
+							"name": "onboardingPreProcessed"
 						},
 						{
 							"linkedService": {
 								"referenceName": "AzureBlobStorage1",
 								"type": "LinkedServiceReference"
 							},
-							"name": "onboardingClean"
+							"name": "usersPreProcessed"
 						},
 						{
 							"linkedService": {
 								"referenceName": "AzureBlobStorage1",
 								"type": "LinkedServiceReference"
 							},
-							"name": "usersClean"
+							"name": "transactionsPreProcessed"
 						}
 					],
 					"transformations": [
@@ -340,6 +340,36 @@
 						},
 						{
 							"name": "cleanUsers"
+						},
+						{
+							"name": "DeleteUnnecessaryColsTransactions"
+						},
+						{
+							"name": "DeleteUnnecessaryColsOnboarding"
+						},
+						{
+							"name": "DeleteUnnecessaryColsUsers"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "DeleteRepeatedUsers"
+						},
+						{
+							"name": "deleteIdCol"
+						},
+						{
+							"name": "filterSellers"
+						},
+						{
+							"name": "filterIndividuals"
+						},
+						{
+							"name": "countTransactionsIndividuals"
+						},
+						{
+							"name": "countTransactionsSellers"
 						}
 					],
 					"scriptLines": [
@@ -385,27 +415,74 @@
 						"     allowSchemaDrift: true,",
 						"     validateSchema: false,",
 						"     ignoreNoFilesFound: false) ~> users",
-						"transactions filter(or(and(type<=7, segment==1), segment == 2)) ~> DeleteUnconsistentRows",
-						"onboarding filter(not(isNull(user_id)) &&  not(isNull(first_login_dt)) && habito <= activacion && activacion <= setup && habito_dt >= activacion_dt && activacion_dt >= setup_dt && first_login_dt <= habito_dt && first_login_dt <= activacion_dt && first_login_dt <= setup_dt && first_login_dt <= return_dt) ~> DeleteOnboardingUnconsistentRows",
+						"transactions filter(((type<=7 && segment==1) || segment == 2 ) && startsWith(user_id, 'MLB')) ~> DeleteUnconsistentRows",
+						"onboarding filter(!isNull(user_id) ",
+						"&& !isNull(first_login_dt) ",
+						"&& startsWith(user_id, 'MLB')",
+						"&& habito <= activacion ",
+						"&& activacion <= setup ",
+						"&& iif(habito == 1, !isNull(habito_dt), isNull(habito_dt))",
+						"&& iif(activacion == 1, !isNull(activacion_dt), isNull(activacion_dt))",
+						"&& iif(setup == 1, !isNull(setup_dt), isNull(setup_dt))",
+						"&& iif(return == 1, !isNull(return_dt), isNull(return_dt))",
+						"&& ((habito == 1 && activacion == 1 && habito_dt >= activacion_dt) || (habito == 0 && activacion == 0))",
+						"&& ((activacion == 1 && setup == 1 && activacion_dt >= setup_dt) || (activacion == 0 && setup == 0))",
+						"&& ((habito == 1 && habito_dt >= first_login_dt) || habito == 0)",
+						"&& ((activacion == 1 && activacion_dt >= first_login_dt) || activacion == 0)",
+						"&& ((setup == 1 && setup_dt >= first_login_dt) || setup == 0)",
+						"&& ((return == 1 && return_dt >= first_login_dt) || return == 0)) ~> DeleteOnboardingUnconsistentRows",
 						"users filter(!isNull(user_id) && startsWith(user_id, \"MLB\")) ~> cleanUsers",
-						"DeleteUnconsistentRows sink(allowSchemaDrift: true,",
-						"     validateSchema: false,",
-						"     format: 'delimited',",
-						"     container: 'tp-big-data-files',",
-						"     folderPath: 'pre-process-files',",
-						"     columnDelimiter: ',',",
-						"     escapeChar: '\\\\',",
-						"     quoteChar: '\\\"',",
-						"     columnNamesAsHeader: false,",
-						"     filePattern:'transactionsClean[n].csv',",
-						"     skipDuplicateMapInputs: true,",
-						"     skipDuplicateMapOutputs: true,",
-						"     mapColumn(",
+						"DeleteUnconsistentRows select(mapColumn(",
 						"          user_id,",
-						"          type,",
 						"          transaction_dt,",
+						"          type,",
 						"          segment",
-						"     )) ~> transactionsClean",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsTransactions",
+						"DeleteOnboardingUnconsistentRows select(mapColumn(",
+						"          first_login_dt,",
+						"          user_id,",
+						"          habito,",
+						"          habito_dt,",
+						"          activacion,",
+						"          activacion_dt,",
+						"          setup,",
+						"          setup_dt,",
+						"          return,",
+						"          return_dt",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsOnboarding",
+						"cleanUsers select(mapColumn(",
+						"          id = user_id",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> DeleteUnnecessaryColsUsers",
+						"DeleteUnnecessaryColsOnboarding, DeleteUnnecessaryColsUsers lookup(user_id == id,",
+						"     multiple: true,",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 filter(isNull(id)) ~> DeleteRepeatedUsers",
+						"DeleteRepeatedUsers select(mapColumn(",
+						"          first_login_dt,",
+						"          user_id,",
+						"          habito,",
+						"          habito_dt,",
+						"          activacion,",
+						"          activacion_dt,",
+						"          setup,",
+						"          setup_dt,",
+						"          return,",
+						"          return_dt",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> deleteIdCol",
+						"DeleteUnnecessaryColsTransactions filter(segment==2) ~> filterSellers",
+						"DeleteUnnecessaryColsTransactions filter(segment==1) ~> filterIndividuals",
+						"filterIndividuals aggregate(groupBy(user_id),",
+						"     transaction_dt = countDistinct(transaction_dt)) ~> countTransactionsIndividuals",
+						"filterSellers aggregate(groupBy(user_id),",
+						"     transaction_dt = count(transaction_dt)) ~> countTransactionsSellers",
 						"DeleteOnboardingUnconsistentRows sink(allowSchemaDrift: true,",
 						"     validateSchema: false,",
 						"     format: 'delimited',",
@@ -415,17 +492,21 @@
 						"     escapeChar: '\\\\',",
 						"     quoteChar: '\\\"',",
 						"     columnNamesAsHeader: true,",
-						"     filePattern:'onboardingClean[n].csv',",
+						"     filePattern:'onboarding_pre_processed_[n].csv',",
 						"     skipDuplicateMapInputs: true,",
 						"     skipDuplicateMapOutputs: true,",
 						"     mapColumn(",
 						"          first_login_dt,",
 						"          user_id,",
 						"          habito,",
+						"          habito_dt,",
 						"          activacion,",
+						"          activacion_dt,",
 						"          setup,",
-						"          return",
-						"     )) ~> onboardingClean",
+						"          setup_dt,",
+						"          return,",
+						"          return_dt",
+						"     )) ~> onboardingPreProcessed",
 						"cleanUsers sink(allowSchemaDrift: true,",
 						"     validateSchema: false,",
 						"     format: 'delimited',",
@@ -434,13 +515,31 @@
 						"     columnDelimiter: ',',",
 						"     escapeChar: '\\\\',",
 						"     quoteChar: '\\\"',",
-						"     columnNamesAsHeader: false,",
-						"     filePattern:'usersClean[n].csv',",
+						"     columnNamesAsHeader: true,",
+						"     filePattern:'users_pre_processed_[n].csv',",
 						"     skipDuplicateMapInputs: true,",
 						"     skipDuplicateMapOutputs: true,",
 						"     mapColumn(",
 						"          user_id",
-						"     )) ~> usersClean"
+						"     )) ~> usersPreProcessed",
+						"DeleteUnconsistentRows sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     container: 'tp-big-data-files',",
+						"     folderPath: 'pre-process-files',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     filePattern:'transactions_pre_processed_[n].csv',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          user_id,",
+						"          transaction_dt,",
+						"          type,",
+						"          segment",
+						"     )) ~> transactionsPreProcessed"
 					]
 				}
 			},
